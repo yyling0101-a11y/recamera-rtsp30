@@ -1,0 +1,13 @@
+# External dependencies: vendor SDK, cloned sources, downloaded images (>1.8 GB).
+# See docs/BUILD.md for how to populate vendor/.
+vendor/
+
+# Build output
+out/
+*.o
+
+# Local test artifacts
+*.log
+*.mp4
+*.h264
+*.png

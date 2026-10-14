@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# S99rtsp30 - start the 1080p30 H.264 RTSP publisher at boot.
+#   stream:  rtsp://<device-ip>:8554/live0
+#   install: handled by install.sh  (/etc is an overlay on /userdata, so it persists)
+#   remove:  /root/uninstall-rtsp30.sh   or   rm /etc/init.d/S99rtsp30
+#
+DAEMON=/root/rtsp30.sh
+SUPFILE=/var/run/rtsp30.sup
+
+start() {
+    [ -x "$DAEMON" ] || exit 0
+    printf "Starting rtsp30: "
+    setsid "$DAEMON" >/dev/null 2>&1 &
+    echo "OK"
+}
+
+stop() {
+    printf "Stopping rtsp30: "
+    # Supervisor first: it traps TERM, stops the watchdog and SIGTERMs rtsp30 so the
+    # pipeline is torn down cleanly. A SIGKILLed pipeline needs a reboot to recover.
+    sup=$(cat "$SUPFILE" 2>/dev/null)
+    [ -n "$sup" ] && kill -TERM "$sup" 2>/dev/null
+    for p in $(ps | awk '/rtsp30\.sh/ && !/awk/ {print $1}'); do
+        kill -TERM "$p" 2>/dev/null
+    done
+    pid=$(pidof rtsp30) && kill -TERM "$pid" 2>/dev/null
+    i=0
+    while [ $i -lt 40 ] && [ -n "$(pidof rtsp30)" ]; do
+        usleep 250000; i=$((i + 1))
+    done
+    for p in $(ps | awk '/rtsp30/ && !/awk/ {print $1}'); do
+        kill -9 "$p" 2>/dev/null
+    done
+    rm -f "$SUPFILE"
+    echo "OK"
+}
+
+case "$1" in
+    start)   start ;;
+    stop)    stop ;;
+    restart) stop; sleep 1; start ;;
+    *)       echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac
+exit 0
