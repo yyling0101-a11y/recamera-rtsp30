@@ -2,7 +2,7 @@
 """Push the repo artifacts to the reCamera over SSH and start the service.
 
 This is the PC-side path for a device that cannot reach GitHub; it is exactly
-what install.sh does, minus the download.
+what the PC-side install scripts do, using the checked-out working tree.
 
     RC_PASS=123123 ./tools/deploy.py            # install + start + verify
     RC_PASS=123123 ./tools/deploy.py --no-start
@@ -29,7 +29,7 @@ FILES = [
     ("scripts/sample.sh", "/root/rtsp30-sample.sh"),
 ]
 
-# Same sequence install.sh uses: supervisors first, then a graceful SIGTERM of
+# Same sequence the remote installer uses: supervisors first, then SIGTERM of
 # the media app so the CVI pipeline is torn down cleanly.
 STOP = r"""
 for p in $(ps | awk '/rtsp30\.sh|fps30\.sh|S99rtsp30|S99fps30/ && !/awk/ {print $1}'); do

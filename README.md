@@ -14,41 +14,34 @@ Seeed reCamera（SG2002 / CV181X，riscv64）原厂 `video_demo` 推出的
 - 链路：`VI/ISP → VPSS(grp0 chn2) → VENC(chn2) → cvi_rtsp`（与原厂完全一致）
 - 交付物：`bin/rtsp30`，52 KB，riscv64 musl，已 strip，直接跑
 
-## 安装（在 reCamera 上执行）
+## 安装（在 PC 上执行）
 
-```sh
-wget -qO- https://raw.githubusercontent.com/OWNER/recamera-rtsp30/main/install.sh | sh
-```
+reCamera 无法访问 GitHub，因此请在能访问 GitHub、且与设备网络互通的 PC 上运行部署脚本。脚本会提示输入设备 IP、SSH 用户名和密码；PC 下载仓库里的可执行程序及配置，通过 SSH 上传到设备，再配置并启动 RTSP 服务。默认仓库为 `yyling0101-a11y/recamera-rtsp30` 的 `main` 分支。
 
-脚本会自动：停掉正在占用管线的进程（`video_demo` / 旧版 `rtsp30`）→ 下载并校验
-sha256 → 安装 `/root/rtsp30` + 守护脚本 + `/etc/init.d/S99rtsp30` 开机自启 →
-启动 → 实测编码帧率并打印拉流地址。**可重复执行，幂等。**
-
-> 把上面 URL 里的 `OWNER` 换成你的 GitHub 用户名；或者改 `install.sh` 里的
-> `REPO=` 那一行（也可以用 `RTSP30_REPO=owner/name` 环境变量覆盖）。
-
-板子访问不了 GitHub（DNS 污染 / 没有 CA 证书）时，用局域网镜像，PC 上先起服务：
+### Linux
 
 ```bash
-./scripts/serve.sh 8000          # PC，仓库根目录
-```
-```sh
-# 板子上
-wget -qO- http://<PC_IP>:8000/install.sh | sh -s -- --base-url http://<PC_IP>:8000
+curl -fLO https://raw.githubusercontent.com/yyling0101-a11y/recamera-rtsp30/main/scripts/install-linux.sh
+chmod +x install-linux.sh
+./install-linux.sh
 ```
 
-或者完全离线（先把仓库拷到板子）：
+需要 Python 3 和 pip；首次运行会在 PC 上安装 Paramiko（SSH/SFTP 依赖）。
 
-```sh
-scp -r . root@<device-ip>:/tmp/repo
-ssh root@<device-ip> 'sh /tmp/repo/install.sh --from-dir /tmp/repo'
+### Windows PowerShell
+
+在 PowerShell 中执行：
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/yyling0101-a11y/recamera-rtsp30/main/scripts/install-windows.ps1 -OutFile install-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-也可以用 PC 侧脚本直接推送（等价于 install.sh，省去下载）：
+需要安装 Python 3。脚本会在 PC 上下载部署工具，首次运行会安装 Paramiko。
 
-```bash
-RC_PASS=<密码> ./tools/deploy.py
-```
+部署时会将 `/etc/init.d/S03node-red`、`/etc/init.d/S91sscma-node` 和 `/etc/init.d/S93sscma-supervisor` 移到 `/etc/init.d/disable/`，停止占用摄像头的旧进程，安装开机启动项并启动 rtsp30。成功后视频地址为 `rtsp://<device-ip>:8554/live0`。
+
+如果仓库或分支不同，可在运行脚本前设置 `RTSP30_REPO=owner/repo` 和 `RTSP30_BRANCH=branch`。
 
 ## 验证
 
@@ -108,9 +101,12 @@ RC_BITRATE=8192 RC_GOP=60 /root/rtsp30      # 临时改参数前台跑
 ## 目录结构
 
 ```
-install.sh                 板端一键安装（GitHub / 镜像 / 局域网 / 离线）
+scripts/install-linux.sh   Linux PC 侧下载并部署
+scripts/install-windows.ps1 Windows PC 侧下载并部署
+tools/pc-deploy.py         PC 侧 GitHub 下载、SSH/SFTP 上传和安装
+scripts/remote-install.sh  设备侧停服务、安装并启动（由 PC 脚本调用）
 bin/rtsp30                 预编译可执行文件（riscv64 musl，已 strip）
-bin/rtsp30.sha256          校验值，install.sh 会核对
+bin/rtsp30.sha256          校验值，设备侧部署器会核对
 etc/rtsp30.sh              板端守护脚本：显式参数 + 自动重启 + 停帧看门狗
 etc/S99rtsp30              板端 /etc/init.d 开机自启
 scripts/rtsp30-status.sh   板端一站式健康检查
@@ -132,14 +128,14 @@ vendor/                    外部依赖（1.8 GB，已 gitignore，不进仓库�
 
 - **不要 `kill -9` 推流进程。** 强杀会把 VPSS→VENC 的 bind 和 VENC 通道留在驱动里，
   下次启动 `VENC 0fps`、`dmesg: vb_qbuf: VENC waitq is full`，只能重启板子。
-  程序正确处理 SIGTERM（1 秒内释放 8554），守护脚本和 `install.sh` 都只发 SIGTERM。
+  程序正确处理 SIGTERM（1 秒内释放 8554），设备侧部署器会先发 SIGTERM。
   万一真被强杀，看门狗会在 ~2 分钟内自动重启板子恢复。
 - **管线和 8554 端口是独占的。** 装本项目前要停掉 `video_demo`、sscma 相关服务
-  （`install.sh` 会自动停并给出禁用提示）。
+  （PC 部署脚本会自动停用相关启动项）。
 - **不修改原厂固件和 vendor 源码**：所有调参都在 `src/main.cpp` 里，通过
   `app_ipcam_*_Param_Get()` 拿到参数结构体后改写，卸载后重启即恢复出厂行为。
 - `/etc` 和 `/root` 是挂在 `/userdata` 上的 overlay，所以安装和开机自启掉电保留；
-  根文件系统只读，`install.sh` 需要时会自动 `rootfs_rw on`。
+  根文件系统只读，设备侧部署器需要时会自动 `rootfs_rw on`。
 
 ## 重新编译
 

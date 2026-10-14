@@ -2,7 +2,7 @@
 #
 # S99rtsp30 - start the 1080p30 H.264 RTSP publisher at boot.
 #   stream:  rtsp://<device-ip>:8554/live0
-#   install: handled by install.sh  (/etc is an overlay on /userdata, so it persists)
+#   install: handled by the PC-side install scripts (/etc is an overlay on /userdata)
 #   remove:  /root/uninstall-rtsp30.sh   or   rm /etc/init.d/S99rtsp30
 #
 DAEMON=/root/rtsp30.sh
